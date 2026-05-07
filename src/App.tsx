@@ -126,7 +126,7 @@ function AppContent() {
                 <ChefHat size={22} />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">InApp<span className="text-primary tracking-normal">.</span></h1>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">AgroGrind<span className="text-primary tracking-normal">.</span></h1>
                 <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1.5 font-sans">Business Manager</p>
               </div>
             </div>

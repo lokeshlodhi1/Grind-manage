@@ -58,9 +58,6 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Welcome Back<span className="text-primary font-sans">.</span></h1>
             <p className="text-slate-400 dark:text-slate-500 text-sm font-medium mt-3">AgroGrind Business Management Suite</p>
-            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest font-bold text-center">Default: admin / admin</p>
-            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -127,7 +124,7 @@ export default function Login({ onLogin }: LoginProps) {
 
           <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-800/50 text-center">
             <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Powered by InApp & Google Sheets
+              Powered by AgroGrind & Google Sheets
             </p>
           </div>
         </div>
