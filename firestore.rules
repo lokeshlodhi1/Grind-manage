@@ -1,0 +1,121 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Mandatory Size Enforcements & Identity Integrity
+    function isValidCustomer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.interestRate is number && data.interestRate >= 0 &&
+             data.status in ['ACTIVE', 'INACTIVE'];
+    }
+
+    function isValidService(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.pricingType in ['KG', 'GRAM', 'FIXED'] &&
+             data.rate is number && data.rate >= 0;
+    }
+
+    function isValidOrder(data) {
+      return isValidId(data.customerId) &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status in ['PENDING_DELIVERY', 'DELIVERED', 'PARTIAL', 'REJECTED'];
+    }
+
+    function isValidLedger(data) {
+      return isValidId(data.customerId) &&
+             data.balance is number &&
+             data.date is string;
+    }
+
+    // match blocks
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false; // Only manageable via console
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
+        isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address', 'interestRate', 'status'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin() && isValidService(incoming());
+    }
+
+    match /taxes/{taxId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidOrder(incoming());
+      allow update: if isSignedIn() && isValidOrder(incoming()) && (
+        isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'deliveryDate', 'remarks', 'paymentType'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /orderItems/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /ledger/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidLedger(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

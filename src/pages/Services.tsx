@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Plus, ChefHat, Trash2, Edit2, Zap } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { Service, PricingType } from '../types';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Services() {
   const [services, setServices] = useState<Service[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
-  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState({ name: '', pricingType: 'KG' as PricingType, rate: 0 });
   const [error, setError] = useState<string | null>(null);
@@ -57,24 +58,20 @@ export default function Services() {
   };
 
   const deleteService = async () => {
-    if (!deletingServiceId) return;
+    if (!serviceToDelete) return;
     
     setIsDeleting(true);
-    console.log("Attempting to delete service:", deletingServiceId);
     
     try {
-      const res = await fetch(`/api/services/${deletingServiceId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/services/${serviceToDelete.id}`, { method: 'DELETE' });
       if (res.ok) {
-        console.log("Service deleted successfully:", deletingServiceId);
-        setServices(prev => prev.filter(s => s.id !== deletingServiceId));
-        setDeletingServiceId(null);
+        setServices(prev => prev.filter(s => s.id !== serviceToDelete.id));
+        setServiceToDelete(null);
       } else {
         const errorData = await res.json();
-        console.error("Deletion failed on server:", errorData);
         alert(`Error: ${errorData.error || 'Failed to delete service'}`);
       }
     } catch (err) {
-      console.error("Deletion critical error:", err);
       alert("Critical: Connection error during deletion.");
     } finally {
       setIsDeleting(false);
@@ -140,6 +137,17 @@ export default function Services() {
         )}
       </div>
 
+      <ConfirmDialog 
+        isOpen={!!serviceToDelete}
+        onClose={() => setServiceToDelete(null)}
+        onConfirm={deleteService}
+        isLoading={isDeleting}
+        title="Delete Service?"
+        message={`Are you sure you want to delete "${serviceToDelete?.name}"? This action cannot be undone. Past orders will not be affected.`}
+        confirmText="Delete"
+        type="danger"
+      />
+
       {showModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm">
            <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 max-w-lg w-full shadow-2xl border border-white/20 dark:border-slate-800 animate-in zoom-in duration-300 relative overflow-hidden">
@@ -202,7 +210,7 @@ export default function Services() {
                    {editingService && (
                     <button 
                       type="button" 
-                      onClick={() => { setShowModal(false); setDeletingServiceId(editingService.id); }}
+                      onClick={() => { setShowModal(false); setServiceToDelete(editingService); }}
                       className="w-14 h-14 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 rounded-2xl hover:bg-rose-500 dark:hover:bg-rose-600 hover:text-white dark:hover:text-white transition-all border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center"
                     >
                       <Trash2 size={22} />
@@ -223,37 +231,6 @@ export default function Services() {
                    </button>
                  </div>
               </form>
-           </div>
-        </div>
-      )}
-
-      {deletingServiceId && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/80 dark:bg-black/90 backdrop-blur-sm">
-           <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 max-w-sm w-full shadow-2xl border border-white/20 dark:border-slate-800 animate-in zoom-in duration-300 relative text-center">
-              <div className="w-20 h-20 bg-rose-50 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 rounded-2xl flex items-center justify-center mb-6 mx-auto border border-rose-100 dark:border-rose-900/50">
-                <Trash2 size={36} />
-              </div>
-              <h3 className="text-2xl font-bold mb-2 text-slate-900 dark:text-white tracking-tight">Delete Service?</h3>
-              <p className="text-slate-500 dark:text-slate-400 text-xs font-medium mb-8 leading-relaxed">
-                This action cannot be undone. Past orders will not be affected.
-              </p>
-              
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setDeletingServiceId(null)}
-                  disabled={isDeleting}
-                  className="theme-button-secondary flex-1"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={deleteService}
-                  disabled={isDeleting}
-                  className="flex-1 py-4 bg-rose-500 text-white rounded-xl font-bold text-xs uppercase tracking-wide hover:bg-rose-600 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                >
-                  {isDeleting ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
            </div>
         </div>
       )}

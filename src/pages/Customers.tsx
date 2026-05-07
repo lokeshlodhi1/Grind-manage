@@ -3,6 +3,7 @@ import { Plus, User, Mail, Phone, Calendar, Trash2, Edit2, MapPin, Filter, Walle
 import { formatDate, cn, formatCurrency } from '../lib/utils';
 import { Customer } from '../types';
 import { useNavigate } from 'react-router-dom';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Customers() {
   const navigate = useNavigate();
@@ -10,6 +11,11 @@ export default function Customers() {
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  
+  // Delete Dialog State
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [formData, setFormData] = useState({ 
     name: '', 
     mobile: '', 
@@ -60,6 +66,25 @@ export default function Customers() {
         setCustomers([...customers, updatedCust]);
       }
       setShowModal(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!customerToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/customers/${customerToDelete.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCustomers(customers.filter(c => c.id !== customerToDelete.id));
+        setCustomerToDelete(null);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to delete customer');
+      }
+    } catch (e) {
+      alert('Connection error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -187,6 +212,13 @@ export default function Customers() {
                       >
                         <Edit2 size={16} />
                       </button>
+                      <button 
+                        onClick={() => setCustomerToDelete(c)}
+                        className="w-9 h-9 flex items-center justify-center bg-white dark:bg-slate-800 hover:bg-rose-50 text-slate-400 dark:text-slate-500 hover:text-rose-600 border border-slate-200 dark:border-slate-700 rounded-lg transition-all shadow-sm"
+                        title="Delete Customer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -205,7 +237,18 @@ export default function Customers() {
         </div>
       </div>
 
+      <ConfirmDialog 
+        isOpen={!!customerToDelete}
+        onClose={() => setCustomerToDelete(null)}
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        title="Delete Customer Profile?"
+        message={`Are you sure you want to delete ${customerToDelete?.name}? This will remove their profile from the registry. This action cannot be undone if there is no balance.`}
+        confirmText="Remove Customer"
+      />
+
       {showModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm">
            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 md:p-10 max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-250 flex flex-col max-h-[90vh] overflow-hidden">
               <div className="shrink-0 mb-8">

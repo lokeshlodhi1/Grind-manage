@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Administrative users of the system",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "STAFF"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username", "role"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer profiles and credit info",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "interestRate": { "type": "number" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Available services (grinding, packing, etc.)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "pricingType": { "type": "string", "enum": ["KG", "FIXED"] },
+        "rate": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "pricingType", "rate"]
+    },
+    "Tax": {
+      "title": "Tax",
+      "description": "Tax rules",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "rate": { "type": "number" },
+        "isEnabled": { "type": "boolean" }
+      },
+      "required": ["name", "rate", "isEnabled"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Sales orders",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "deliveryDate": { "type": "string", "format": "date-time" },
+        "totalAmount": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "totalQuantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "paymentType": { "type": "string", "enum": ["CASH", "CREDIT", "UNSET"] },
+        "status": { "type": "string", "enum": ["PENDING_DELIVERY", "DELIVERED", "PARTIAL", "REJECTED"] },
+        "remarks": { "type": "string" }
+      },
+      "required": ["customerId", "totalAmount", "status"]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "description": "Individual items within an order",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "rate": { "type": "number" },
+        "amount": { "type": "number" },
+        "pricingType": { "type": "string" },
+        "delivered": { "type": "boolean" }
+      },
+      "required": ["orderId", "serviceId", "quantity", "amount"]
+    },
+    "Ledger": {
+      "title": "Ledger",
+      "description": "Financial records for customers",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "debit": { "type": "number" },
+        "credit": { "type": "number" },
+        "interest": { "type": "number" },
+        "balance": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "type": { "type": "string", "enum": ["CASH", "CREDIT"] }
+      },
+      "required": ["customerId", "date", "balance"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Audit logs for system actions",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "module": { "type": "string" },
+        "data": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "timestamp"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global store settings",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "defaultInterestRate": { "type": "number" },
+        "currency": { "type": "string" },
+        "isSheetIntegrationEnabled": { "type": "boolean" },
+        "googleSheetUrl": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "System users" },
+    "customers": { "schema": "Customer", "description": "Customer database" },
+    "services": { "schema": "Service", "description": "Service catalog" },
+    "taxes": { "schema": "Tax", "description": "Tax configurations" },
+    "orders": { "schema": "Order", "description": "Sales orders" },
+    "orderItems": { "schema": "OrderItem", "description": "Items in orders" },
+    "ledger": { "schema": "Ledger", "description": "Accounting ledger" },
+    "logs": { "schema": "Log", "description": "System audit logs" },
+    "settings": { "schema": "Settings", "description": "Store configuration document" }
+  }
+}

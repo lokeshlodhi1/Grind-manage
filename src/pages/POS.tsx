@@ -20,6 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../lib/utils';
 import { Customer, Service, OrderItem, Order, Tax } from '../types';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function POS() {
   const navigate = useNavigate();
@@ -43,6 +44,14 @@ export default function POS() {
   const [deliveredItemIds, setDeliveredItemIds] = useState<string[]>([]);
   const [deliveryRemarks, setDeliveryRemarks] = useState('');
   const [partialCashAmount, setPartialCashAmount] = useState('');
+
+  // Confirmation States
+  const [confirmState, setConfirmState] = useState<{
+    type: 'DELIVER' | 'REJECT' | 'DELETE';
+    order: Order;
+    isOpen: boolean;
+  } | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     if (deliveryOrder && deliveryOrder.items) {
@@ -177,38 +186,75 @@ export default function POS() {
 
   const handleDelivery = async () => {
     if (!deliveryOrder) return;
+    setIsConfirming(true);
 
-    const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        paymentType, 
-        deliveredItemIds,
-        remarks: deliveryRemarks,
-        partialCashAmount: parseFloat(partialCashAmount) || 0
-      })
-    });
+    try {
+      const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          paymentType, 
+          deliveredItemIds,
+          remarks: deliveryRemarks,
+          partialCashAmount: parseFloat(partialCashAmount) || 0
+        })
+      });
 
-    if (res.ok) {
-      setDeliveryOrder(null);
-      fetchData();
+      if (res.ok) {
+        setDeliveryOrder(null);
+        setConfirmState(null);
+        fetchData();
+      }
+    } catch (e) {
+      alert("Fulfillment failed");
+    } finally {
+      setIsConfirming(false);
     }
   };
 
   const handleReject = async () => {
     if (!deliveryOrder) return;
-    const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        status: 'REJECTED',
-        remarks: deliveryRemarks 
-      })
-    });
+    setIsConfirming(true);
 
-    if (res.ok) {
-      setDeliveryOrder(null);
-      fetchData();
+    try {
+      const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          status: 'REJECTED',
+          remarks: deliveryRemarks 
+        })
+      });
+
+      if (res.ok) {
+        setDeliveryOrder(null);
+        setConfirmState(null);
+        fetchData();
+      }
+    } catch (e) {
+      alert("Rejection failed");
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!confirmState?.order) return;
+    setIsConfirming(true);
+
+    try {
+      const res = await fetch(`/api/orders/${confirmState.order.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setOrders(orders.filter(o => o.id !== confirmState.order?.id));
+        setConfirmState(null);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Deletion failed");
+      }
+    } catch (e) {
+      alert("Connection error");
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -538,13 +584,21 @@ export default function POS() {
                          <Eye size={16} />
                        </button>
                        {o.status !== 'DELIVERED' && o.status !== 'REJECTED' && (
-                         <button 
-                           onClick={() => setDeliveryOrder(o)}
-                           className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl hover:bg-slate-900 dark:hover:bg-blue-600 transition-all shadow-md shadow-primary/10"
-                         >
-                           <Truck size={14} />
-                           <span className="text-[10px] font-bold uppercase tracking-wider">Deliver</span>
-                         </button>
+                         <>
+                           <button 
+                            onClick={() => setDeliveryOrder(o)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl hover:bg-slate-900 dark:hover:bg-blue-600 transition-all shadow-md shadow-primary/10"
+                           >
+                            <Truck size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Deliver</span>
+                           </button>
+                           <button 
+                            onClick={() => setConfirmState({ type: 'DELETE', order: o, isOpen: true })}
+                            className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-rose-500 dark:hover:bg-rose-600 hover:text-white transition-all shadow-sm"
+                           >
+                             <Trash2 size={16} />
+                           </button>
+                         </>
                        )}
                     </div>
                   </td>
@@ -698,7 +752,7 @@ export default function POS() {
 
               <div className="flex gap-4 shrink-0 pt-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 sticky bottom-0 z-20">
                 <button 
-                  onClick={handleReject}
+                  onClick={() => setConfirmState({ type: 'REJECT', order: deliveryOrder, isOpen: true })}
                   disabled={!deliveryRemarks.trim()}
                   className="flex-1 py-4 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50 dark:hover:bg-rose-900/30 hover:text-rose-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   title={!deliveryRemarks.trim() ? "Remarks required for rejection" : ""}
@@ -706,7 +760,7 @@ export default function POS() {
                   Reject
                 </button>
                 <button 
-                  onClick={handleDelivery}
+                  onClick={() => setConfirmState({ type: 'DELIVER', order: deliveryOrder, isOpen: true })}
                   disabled={deliveredItemIds.length === 0}
                   className="flex-[2] py-4 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-primary/10 hover:bg-slate-900 dark:hover:bg-blue-600 transition-all disabled:opacity-30"
                 >
@@ -716,6 +770,31 @@ export default function POS() {
            </div>
         </div>
       )}
+
+      <ConfirmDialog 
+        isOpen={!!confirmState}
+        onClose={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (confirmState?.type === 'DELIVER') handleDelivery();
+          if (confirmState?.type === 'REJECT') handleReject();
+          if (confirmState?.type === 'DELETE') handleDeleteOrder();
+        }}
+        isLoading={isConfirming}
+        type={confirmState?.type === 'DELETE' ? 'danger' : confirmState?.type === 'REJECT' ? 'warning' : 'success'}
+        title={
+          confirmState?.type === 'DELIVER' ? "Complete Delivery?" :
+          confirmState?.type === 'REJECT' ? "Reject Order?" : "Delete Record?"
+        }
+        message={
+          confirmState?.type === 'DELIVER' ? `Confirm that ${deliveredItemIds.length} items from order #${confirmState.order.id.split('-')[0].toUpperCase()} have been delivered to ${confirmState.order.customerName}.` :
+          confirmState?.type === 'REJECT' ? `Are you sure you want to REJECT order #${confirmState.order.id.split('-')[0].toUpperCase()}? This will be recorded in the system logs.` :
+          `Are you sure you want to permanently delete order #${confirmState.order.id.split('-')[0].toUpperCase()}? This action cannot be reversed.`
+        }
+        confirmText={
+          confirmState?.type === 'DELIVER' ? "Deliver" :
+          confirmState?.type === 'REJECT' ? "Reject" : "Delete"
+        }
+      />
 
       {/* Success Modal */}
       {showOrderSuccess && (
