@@ -19,16 +19,37 @@ const PORT = 3000;
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
-  console.log("[Firebase] Initializing Admin SDK for project:", firebaseConfig.projectId);
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId
-  });
+  const projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (projectId && clientEmail && privateKey) {
+    console.log("[Firebase] Initializing Admin SDK with Service Account for project:", projectId);
+    console.log("[Firebase] Client Email present:", !!clientEmail);
+    console.log("[Firebase] Private Key present:", !!privateKey);
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n'),
+      })
+    });
+  } else {
+    console.log("[Firebase] Initializing Admin SDK with Project ID only:", projectId);
+    console.log("[Firebase] (Note: This may cause PERMISSION_DENIED if no ambient credentials exist)");
+    admin.initializeApp({
+      projectId: projectId
+    });
+  }
 }
 
 const dbId = firebaseConfig.firestoreDatabaseId;
 console.log("[Firebase] Using database ID:", dbId || "(default)");
-// @ts-ignore
-const db = dbId ? getFirestore(dbId) : getFirestore();
+if (dbId) {
+  console.log("[Firebase] Database ID is custom, ensure service account has access to this specific instance.");
+}
+// Use the explicit app instance to avoid ambiguity
+const db = getFirestore(admin.apps[0]!, dbId);
 
 // Sync DB helper (Legacy replaced by Firestore)
 async function getSettings(): Promise<StoreSettings> {

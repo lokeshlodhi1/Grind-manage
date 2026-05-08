@@ -105,7 +105,7 @@ export default function OrderDetails() {
       doc.text(order.remarks, 14, summaryY + 5, { maxWidth: 100 });
     }
 
-    doc.save(`Receipt_${order.id.split('-')[0]}.pdf`);
+    doc.save(`Receipt_${(order.id || '').split('-')[0]}.pdf`);
   };
 
   if (loading) return (
@@ -159,7 +159,7 @@ export default function OrderDetails() {
                       <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Order Information</h1>
                       <div className="flex flex-wrap items-center gap-3 mt-3">
                         <span className="px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-widest">
-                          ID: #{order.id.split('-')[0].toUpperCase()}
+                          ID: #{(order.id || '').split('-')[0].toUpperCase()}
                         </span>
                         <span className={cn(
                           "px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border",

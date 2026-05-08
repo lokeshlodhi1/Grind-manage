@@ -178,7 +178,7 @@ export default function Ledger() {
                 <div>
                   <h3 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{selectedCust.name}</h3>
                   <div className="flex items-center gap-3 mt-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-lg">ID: {selectedCust.id.split('-')[0].toUpperCase()}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-lg">ID: {selectedCust.id?.split('-')[0].toUpperCase() || 'N/A'}</span>
                     <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50 rounded-lg">Rate: {selectedCust.interestRate}%</span>
                   </div>
                 </div>

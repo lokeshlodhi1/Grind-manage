@@ -543,7 +543,7 @@ export default function POS() {
                 <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group">
                   <td className="py-6 pr-8">
                     <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                       # {o.id.split('-')[0].toUpperCase()}
+                       # {o.id?.split('-')[0].toUpperCase() || 'N/A'}
                        {o.remarks && (
                          <span title={o.remarks} className="cursor-help text-amber-500">
                            <FileText size={14} />
@@ -629,7 +629,7 @@ export default function POS() {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Order Fulfillment</h3>
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">ORDER # {deliveryOrder.id.split('-')[0].toUpperCase()}</p>
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">ORDER # {(deliveryOrder.id || '').split('-')[0].toUpperCase()}</p>
                   </div>
                 </div>
                 <button onClick={() => setDeliveryOrder(null)} className="p-2.5 text-slate-400 hover:text-rose-500 transition-all bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg">
@@ -786,9 +786,9 @@ export default function POS() {
           confirmState?.type === 'REJECT' ? "Reject Order?" : "Delete Record?"
         }
         message={
-          confirmState?.type === 'DELIVER' ? `Confirm that ${deliveredItemIds.length} items from order #${confirmState.order.id.split('-')[0].toUpperCase()} have been delivered to ${confirmState.order.customerName}.` :
-          confirmState?.type === 'REJECT' ? `Are you sure you want to REJECT order #${confirmState.order.id.split('-')[0].toUpperCase()}? This will be recorded in the system logs.` :
-          `Are you sure you want to permanently delete order #${confirmState.order.id.split('-')[0].toUpperCase()}? This action cannot be reversed.`
+          confirmState?.type === 'DELIVER' ? `Confirm that ${deliveredItemIds.length} items from order #${(confirmState?.order?.id || '').split('-')[0].toUpperCase()} have been delivered to ${confirmState?.order?.customerName}.` :
+          confirmState?.type === 'REJECT' ? `Are you sure you want to REJECT order #${(confirmState?.order?.id || '').split('-')[0].toUpperCase()}? This will be recorded in the system logs.` :
+          `Are you sure you want to permanently delete order #${(confirmState?.order?.id || '').split('-')[0].toUpperCase()}? This action cannot be reversed.`
         }
         confirmText={
           confirmState?.type === 'DELIVER' ? "Deliver" :

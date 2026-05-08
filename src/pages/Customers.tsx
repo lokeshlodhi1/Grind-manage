@@ -163,7 +163,7 @@ export default function Customers() {
                              c.status === 'ACTIVE' ? "bg-emerald-500 shadow-sm" : "bg-slate-300 dark:bg-slate-700"
                            )}></span>
                         </div>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">ID: {c.id.split('-')[0].toUpperCase()}</p>
+                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">ID: {c.id?.split('-')[0].toUpperCase() || 'N/A'}</p>
                       </div>
                     </div>
                   </td>
