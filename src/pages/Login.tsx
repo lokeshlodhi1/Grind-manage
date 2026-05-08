@@ -30,10 +30,15 @@ export default function Login({ onLogin }: LoginProps) {
       } else {
         let errorMessage = 'Invalid credentials';
         try {
-          const err = await response.json();
-          errorMessage = err.error || errorMessage;
-          if (err.details) {
-            errorMessage = `${errorMessage}: ${err.details}`;
+          const text = await response.text();
+          try {
+            const err = JSON.parse(text);
+            errorMessage = err.error || errorMessage;
+            if (err.details) {
+              errorMessage = `${errorMessage}: ${err.details}`;
+            }
+          } catch (jsonErr) {
+            errorMessage = `Server Error: ${response.status} ${response.statusText} - ${text.substring(0, 100)}`;
           }
         } catch (e) {
           errorMessage = `Server Error: ${response.status} ${response.statusText}`;

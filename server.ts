@@ -31,9 +31,13 @@ let db: any;
 function initializeFirebase() {
   if (admin.apps.length > 0) {
     console.log("[Firebase] Admin already initialized");
-    const dbId = firebaseConfig.firestoreDatabaseId;
-    db = getFirestore(admin.apps[0]!, dbId);
-    return;
+    try {
+      const dbId = firebaseConfig.firestoreDatabaseId;
+      db = getFirestore(admin.apps[0]!, dbId);
+      return;
+    } catch (e: any) {
+      console.error("[Firebase] Re-init getFirestore failed:", e.message);
+    }
   }
 
   let projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
@@ -42,13 +46,11 @@ function initializeFirebase() {
 
   console.log("[Firebase] Starting initialization...");
   console.log("[Firebase] Environment Check:", {
-    has_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
-    has_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
-    has_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+    has_PROJECT_ID: !!projectId,
+    has_CLIENT_EMAIL: !!clientEmail,
+    has_PRIVATE_KEY: !!privateKey,
     has_CONFIG: !!process.env.FIREBASE_CONFIG,
-    has_GEMINI_KEY: !!process.env.GEMINI_API_KEY,
-    node_env: process.env.NODE_ENV,
-    is_vercel: !!process.env.VERCEL
+    db_id: firebaseConfig.firestoreDatabaseId
   });
 
   // Support FIREBASE_CONFIG JSON blob if provided
@@ -58,21 +60,14 @@ function initializeFirebase() {
       projectId = projectId || config.projectId || config.project_id;
       clientEmail = clientEmail || config.clientEmail || config.client_email;
       privateKey = privateKey || config.privateKey || config.private_key;
-      console.log("[Firebase] Integrated config from FIREBASE_CONFIG. Keys present:", Object.keys(config));
     } catch (e) {
       console.error("[Firebase] Failed to parse FIREBASE_CONFIG env var:", e);
     }
   }
 
-  // Final check for missing pieces
-  if (projectId && !clientEmail && !privateKey) {
-    console.warn("[Firebase] Initializing with PROJECT_ID only. Operations might fail if service account is required.");
-  }
-
   try {
     if (projectId && clientEmail && privateKey) {
       console.log("[Firebase] Initializing with Service Account for project:", projectId);
-      // Clean up private key (Vercel/Shell encoding issues)
       const formattedPrivateKey = privateKey
         .replace(/\\n/g, '\n')
         .replace(/^"(.*)"$/, '$1')
@@ -86,24 +81,23 @@ function initializeFirebase() {
           privateKey: formattedPrivateKey,
         })
       });
-      console.log("[Firebase] Admin SDK initialized with Service Account");
     } else if (projectId) {
       console.log("[Firebase] Initializing with Project ID ONLY:", projectId);
       admin.initializeApp({ projectId });
     } else {
-      console.warn("[Firebase] No credentials found. Falling back to default initialization.");
-      try {
-        admin.initializeApp();
-      } catch (inner) {
-        console.error("[Firebase] Default initialization failed. This usually means no service account is available.");
-        throw inner;
-      }
+      console.warn("[Firebase] No credentials found. Falling back to default.");
+      admin.initializeApp();
     }
 
     if (admin.apps.length > 0) {
       const dbId = firebaseConfig.firestoreDatabaseId;
-      db = getFirestore(admin.apps[0]!, dbId);
-      console.log("[Firebase] Firestore initialized successfully");
+      try {
+        db = getFirestore(admin.apps[0]!, dbId);
+        console.log("[Firebase] Firestore initialized successfully with ID:", dbId || "(default)");
+      } catch (inner) {
+        console.warn("[Firebase] Custom database ID failed, trying default:", dbId);
+        db = getFirestore(admin.apps[0]!);
+      }
     }
   } catch (e: any) {
     console.error("[Firebase] CRITICAL Initialization error:", e.stack || e.message);
@@ -192,11 +186,33 @@ function setupRoutes() {
       const dbStatus = db ? "Initialized" : "NOT Initialized";
       let settingsFound = false;
       let dbError = null;
+      let collections = [];
 
       if (db) {
         try {
           const snap = await db.collection("settings").doc("global").get();
           settingsFound = snap.exists;
+          
+          const usersSnap = await db.collection("users").limit(1).get();
+          const usersCount = usersSnap.size;
+          res.json({ 
+            status: "ok",
+            database_status: dbStatus,
+            database_id: firebaseConfig.firestoreDatabaseId || "(default)",
+            project_id: admin.apps.length > 0 ? admin.apps[0]?.options.projectId : null,
+            settings_found: settingsFound,
+            users_check: usersCount >= 0 ? "Success" : "Empty",
+            env: {
+              vercel: !!process.env.VERCEL,
+              node_env: process.env.NODE_ENV,
+              has_config: !!process.env.FIREBASE_CONFIG,
+              has_project_id: !!process.env.FIREBASE_PROJECT_ID,
+              has_client_email: !!process.env.FIREBASE_CLIENT_EMAIL,
+              has_private_key: !!process.env.FIREBASE_PRIVATE_KEY
+            },
+            timestamp: new Date().toISOString()
+          });
+          return;
         } catch (e: any) {
           dbError = e.message;
         }
@@ -207,6 +223,7 @@ function setupRoutes() {
         database_status: dbStatus,
         database_error: dbError,
         database_id: firebaseConfig.firestoreDatabaseId || "(default)",
+        project_id: admin.apps.length > 0 ? admin.apps[0]?.options.projectId : null,
         settings_found: settingsFound,
         env: {
           vercel: !!process.env.VERCEL,
@@ -261,7 +278,9 @@ function setupRoutes() {
         const isPermissionDenied = dbError.code === 7 || dbError.message?.toLowerCase().includes("permission denied");
         return res.status(500).json({ 
           error: "Database query failed", 
-          details: isPermissionDenied ? "PERMISSION_DENIED: The service account does not have access to this Firestore project or database." : dbError.message 
+          details: isPermissionDenied ? "PERMISSION_DENIED: The service account does not have access to this Firestore project or database." : dbError.message,
+          code: dbError.code,
+          stack: process.env.NODE_ENV === "production" ? undefined : dbError.stack
         });
       }
       
@@ -273,12 +292,17 @@ function setupRoutes() {
       } else {
         // Bootstrap default admin if it doesn't exist and credentials match
         if (username === "admin" && password === "admin") {
-          const adminCheck = await db.collection("users").where("username", "==", "admin").limit(1).get();
-          if (adminCheck.empty) {
-            console.log(`[Login] Bootstrapping default admin user`);
-            const newUser = { username: "admin", password: "admin", role: "ADMIN", createdAt: new Date().toISOString() };
-            const docRef = await db.collection("users").add(newUser);
-            return res.json({ id: docRef.id, username: newUser.username, role: newUser.role });
+          try {
+            const adminCheck = await db.collection("users").where("username", "==", "admin").limit(1).get();
+            if (adminCheck.empty) {
+              console.log(`[Login] Bootstrapping default admin user`);
+              const newUser = { username: "admin", password: "admin", role: "ADMIN", createdAt: new Date().toISOString() };
+              const docRef = await db.collection("users").add(newUser);
+              return res.json({ id: docRef.id, username: newUser.username, role: newUser.role });
+            }
+          } catch (bootstrapErr: any) {
+            console.error("[Login] Admin bootstrap failed:", bootstrapErr.message);
+            // Don't fail the whole request, proceed to 401
           }
         }
         console.warn(`[Login] Failed for user: ${username}`);
