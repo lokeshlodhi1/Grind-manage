@@ -28,12 +28,18 @@ export default function Login({ onLogin }: LoginProps) {
         const user = await response.json();
         onLogin(user.username);
       } else {
-        const err = await response.json();
-        setError(err.error || 'Invalid credentials');
+        let errorMessage = 'Invalid credentials';
+        try {
+          const err = await response.json();
+          errorMessage = err.error || errorMessage;
+        } catch (e) {
+          errorMessage = `Server Error: ${response.status} ${response.statusText}`;
+        }
+        setError(errorMessage);
         setIsLoading(false);
       }
-    } catch (err) {
-      setError('Connection failed. Please try again.');
+    } catch (err: any) {
+      setError(`Connection failed: ${err.message || 'Please check your internet connection'}`);
       setIsLoading(false);
     }
   };

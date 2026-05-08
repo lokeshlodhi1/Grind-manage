@@ -1,12 +1,10 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import cron from "node-cron";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-import firebaseConfig from "./firebase-applet-config.json";
 import { 
   Customer, Service, Order, OrderItem, LedgerEntry, AuditLog, StoreSettings, Tax 
 } from "./src/types";
@@ -14,6 +12,16 @@ import { v4 as uuidv4 } from "uuid";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const firebaseConfigPath = path.join(__dirname, "firebase-applet-config.json");
+let firebaseConfig: any = {};
+try {
+  if (fs.existsSync(firebaseConfigPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
+  }
+} catch (e) {
+  console.error("[Firebase] Failed to load firebase-applet-config.json:", e);
+}
 
 const PORT = 3000;
 
@@ -23,33 +31,38 @@ if (!admin.apps.length) {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-  if (projectId && clientEmail && privateKey) {
-    console.log("[Firebase] Initializing Admin SDK with Service Account for project:", projectId);
-    console.log("[Firebase] Client Email present:", !!clientEmail);
-    console.log("[Firebase] Private Key present:", !!privateKey);
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n'),
-      })
-    });
-  } else {
-    console.log("[Firebase] Initializing Admin SDK with Project ID only:", projectId);
-    console.log("[Firebase] (Note: This may cause PERMISSION_DENIED if no ambient credentials exist)");
-    admin.initializeApp({
-      projectId: projectId
-    });
+  try {
+    if (projectId && clientEmail && privateKey) {
+      console.log("[Firebase] Initializing Admin SDK with Service Account for project:", projectId);
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey: privateKey.replace(/\\n/g, '\n'),
+        })
+      });
+    } else if (projectId) {
+      console.log("[Firebase] Initializing Admin SDK with Project ID only:", projectId);
+      admin.initializeApp({
+        projectId: projectId
+      });
+    } else {
+      console.warn("[Firebase] No Project ID provided. Admin SDK will not be initialized.");
+    }
+  } catch (e) {
+    console.error("[Firebase] Initialization error:", e);
   }
 }
 
-const dbId = firebaseConfig.firestoreDatabaseId;
-console.log("[Firebase] Using database ID:", dbId || "(default)");
-if (dbId) {
-  console.log("[Firebase] Database ID is custom, ensure service account has access to this specific instance.");
-}
 // Use the explicit app instance to avoid ambiguity
-const db = getFirestore(admin.apps[0]!, dbId);
+let db: any;
+if (admin.apps.length > 0) {
+  const dbId = firebaseConfig.firestoreDatabaseId;
+  db = getFirestore(admin.apps[0]!, dbId);
+  console.log("[Firebase] Firestore initialized successfully");
+} else {
+  console.error("[Firebase] Admin app not initialized. Firestore operations will fail.");
+}
 
 // Sequential ID Helper
 async function getNextId(counterKey: string, length: number): Promise<string> {
@@ -112,20 +125,23 @@ async function logAction(action: string, module: string, data: any) {
 export const app = express();
 app.use(express.json());
 
-async function startServer() {
-  // Use the existing app instance
-  // app.use(express.json()); // Already handled above
-
-  // API Routes
-  
+// Setup Routes
+function setupRoutes() {
   // Health Check
   app.get("/api/health", async (req, res) => {
     try {
+      if (!db) {
+        return res.status(500).json({ status: "error", message: "Firestore not initialized" });
+      }
       const snap = await db.collection("settings").doc("global").get();
       res.json({ 
         status: "ok", 
         database: firebaseConfig.firestoreDatabaseId,
-        settingsFound: snap.exists
+        settingsFound: snap.exists,
+        env: {
+          vercel: !!process.env.VERCEL,
+          node_env: process.env.NODE_ENV
+        }
       });
     } catch (e: any) {
       res.status(500).json({ status: "error", message: e.message });
@@ -764,9 +780,15 @@ async function startServer() {
       stack: process.env.NODE_ENV === "production" ? undefined : err.stack
     });
   });
+}
 
+// Initialize routes immediately
+setupRoutes();
+
+async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && process.env.VITE_DEV_SERVER === "true") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -791,7 +813,7 @@ async function startServer() {
 }
 
 // Start if not in a Vercel-like environment that expects an export
-if (process.env.VITE_DEV_SERVER === "true" || !process.env.VERCEL) {
+if (process.env.VITE_DEV_SERVER === "true" || (!process.env.VERCEL && !process.env.GATEWAY_URL)) {
   startServer();
 }
 
