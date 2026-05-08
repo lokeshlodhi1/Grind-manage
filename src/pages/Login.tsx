@@ -32,6 +32,9 @@ export default function Login({ onLogin }: LoginProps) {
         try {
           const err = await response.json();
           errorMessage = err.error || errorMessage;
+          if (err.details) {
+            errorMessage = `${errorMessage}: ${err.details}`;
+          }
         } catch (e) {
           errorMessage = `Server Error: ${response.status} ${response.statusText}`;
         }
