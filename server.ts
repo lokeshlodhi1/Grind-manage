@@ -8,10 +8,18 @@ import { getFirestore } from "firebase-admin/firestore";
 import { 
   Customer, Service, Order, OrderItem, LedgerEntry, AuditLog, StoreSettings, Tax 
 } from "./src/types";
-import { v4 as uuidv4 } from "uuid";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Global Error Handling for unhandled rejections/exceptions
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Fatal] Unhandled Rejection at:", promise, "reason:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Fatal] Uncaught Exception:", err);
+  // Optional: process.exit(1) if you want it to restart
+});
 
 const firebaseConfigPath = path.join(__dirname, "firebase-applet-config.json");
 let firebaseConfig: any = {};
@@ -943,18 +951,24 @@ async function startServer() {
     }
   }
 
-  // Only listen if not running as a module (Vercel)
-  if (process.env.VITE_DEV_SERVER === "true") {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+  // Ensure server listens except when specifically running as a serverless function export
+  const isServerless = !!process.env.VERCEL || !!process.env.LAMBDA_TASK_ROOT;
+  
+  if (!isServerless) {
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Server] listening on 0.0.0.0:${PORT} (Node: ${process.version})`);
+    });
+    
+    server.on("error", (err: any) => {
+      console.error("[Server] Critical error during listen:", err);
     });
   }
 }
 
-// Start if not in a Vercel-like environment that expects an export
-if (process.env.VITE_DEV_SERVER === "true" || (!process.env.VERCEL && !process.env.GATEWAY_URL)) {
-  startServer();
-}
+// Start the server
+startServer().catch((err) => {
+  console.error("[Fatal] startServer failed:", err);
+});
 
 export default app;
 ;

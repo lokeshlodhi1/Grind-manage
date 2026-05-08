@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "VITE_DEV_SERVER=true tsx server.ts",
+    "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
@@ -36,7 +37,7 @@
     "react-router-dom": "^7.14.2",
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.5.0",
-    "uuid": "^14.0.0",
+    "uuid": "^11.0.1",
     "vite": "^6.2.3",
     "xlsx": "^0.18.5"
   },
