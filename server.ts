@@ -27,18 +27,32 @@ const PORT = 3000;
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
-  const projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  let projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+  let clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  // Support FIREBASE_CONFIG JSON blob if provided
+  if (process.env.FIREBASE_CONFIG) {
+    try {
+      const config = JSON.parse(process.env.FIREBASE_CONFIG);
+      projectId = projectId || config.projectId;
+      clientEmail = clientEmail || config.clientEmail;
+      privateKey = privateKey || config.privateKey;
+      console.log("[Firebase] Loaded config from FIREBASE_CONFIG env var");
+    } catch (e) {
+      console.error("[Firebase] Failed to parse FIREBASE_CONFIG env var:", e);
+    }
+  }
 
   try {
     if (projectId && clientEmail && privateKey) {
       console.log("[Firebase] Initializing Admin SDK with Service Account for project:", projectId);
+      const formattedPrivateKey = privateKey.replace(/\\n/g, '\n').replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId,
           clientEmail,
-          privateKey: privateKey.replace(/\\n/g, '\n'),
+          privateKey: formattedPrivateKey,
         })
       });
     } else if (projectId) {
@@ -47,19 +61,25 @@ if (!admin.apps.length) {
         projectId: projectId
       });
     } else {
-      console.warn("[Firebase] No Project ID provided. Admin SDK will not be initialized.");
+      console.warn("[Firebase] No Firebase Project ID found. Searching for credentials...");
+      // Try default initialization
+      admin.initializeApp();
     }
-  } catch (e) {
-    console.error("[Firebase] Initialization error:", e);
+  } catch (e: any) {
+    console.error("[Firebase] Initialization error:", e.message);
   }
 }
 
 // Use the explicit app instance to avoid ambiguity
 let db: any;
 if (admin.apps.length > 0) {
-  const dbId = firebaseConfig.firestoreDatabaseId;
-  db = getFirestore(admin.apps[0]!, dbId);
-  console.log("[Firebase] Firestore initialized successfully");
+  try {
+    const dbId = firebaseConfig.firestoreDatabaseId;
+    db = getFirestore(admin.apps[0]!, dbId);
+    console.log("[Firebase] Firestore initialized successfully with database ID:", dbId || "(default)");
+  } catch (e: any) {
+    console.error("[Firebase] Firestore initialization failed:", e.message);
+  }
 } else {
   console.error("[Firebase] Admin app not initialized. Firestore operations will fail.");
 }
@@ -127,6 +147,16 @@ app.use(express.json());
 
 // Setup Routes
 function setupRoutes() {
+  // Middleware to ensure DB is initialized
+  app.use("/api", (req, res, next) => {
+    if (req.path === "/health") return next();
+    if (!db) {
+      console.error("[API] Database not initialized for request:", req.path);
+      return res.status(503).json({ error: "Database not initialized. Please check your environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY)." });
+    }
+    next();
+  });
+
   // Health Check
   app.get("/api/health", async (req, res) => {
     try {
@@ -641,6 +671,10 @@ function setupRoutes() {
   // Interest Calculation Logic
   async function calculateDailyInterest() {
     console.log("[System] Triggering Automated Interest Calculation...");
+    if (!db) {
+      console.error("[System] Database not initialized, skipping interest calculation");
+      return 0;
+    }
     try {
       const today = new Date();
       today.setHours(23, 59, 59, 999);
@@ -694,7 +728,13 @@ function setupRoutes() {
     }
   }
 
-  cron.schedule("59 23 * * *", calculateDailyInterest);
+  // Only schedule cron if not on Vercel
+  if (!process.env.VERCEL) {
+    cron.schedule("59 23 * * *", calculateDailyInterest);
+    console.log("[System] Interest accrual cron scheduled (every day at 23:59)");
+  } else {
+    console.log("[System] Interest accrual cron skipped on Vercel (use Vercel Crons or manual trigger)");
+  }
 
   app.post("/api/ledger/calculate-interest", async (req, res, next) => {
     try {
