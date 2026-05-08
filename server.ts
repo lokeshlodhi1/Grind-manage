@@ -1,7 +1,3 @@
-console.log("[Process] Starting server process...");
-console.log("[Process] Node Version:", process.version);
-console.log("[Process] Current Working Directory:", process.cwd());
-
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -12,7 +8,7 @@ import { getFirestore } from "firebase-admin/firestore";
 
 import { 
   Customer, Service, Order, OrderItem, LedgerEntry, AuditLog, StoreSettings, Tax 
-} from "./src/types";
+} from "./src/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -933,10 +929,8 @@ function setupRoutes() {
   });
 }
 
-// Initialize routes immediately
-setupRoutes();
-
 async function startServer() {
+  const PORT = 3000;
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && process.env.VITE_DEV_SERVER === "true") {
     const { createServer: createViteServer } = await import("vite");
@@ -969,9 +963,22 @@ async function startServer() {
 }
 
 // Start the server
-startServer().catch((err) => {
-  console.error("[Fatal] startServer failed:", err);
-});
+async function run() {
+  console.log("[Process] Starting server process...");
+  console.log("[Process] Node Version:", process.version);
+  console.log("[Process] Current Working Directory:", process.cwd());
+  
+  try {
+    initializeFirebase();
+    setupRoutes();
+    await startServer();
+  } catch (err) {
+    console.error("[Fatal] startup failed:", err);
+    process.exit(1);
+  }
+}
+
+run();
 
 export default app;
 ;
