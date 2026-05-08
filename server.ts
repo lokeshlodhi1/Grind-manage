@@ -1,3 +1,7 @@
+console.log("[Process] Starting server process...");
+console.log("[Process] Node Version:", process.version);
+console.log("[Process] Current Working Directory:", process.cwd());
+
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -5,6 +9,7 @@ import cron from "node-cron";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+
 import { 
   Customer, Service, Order, OrderItem, LedgerEntry, AuditLog, StoreSettings, Tax 
 } from "./src/types";
@@ -18,7 +23,6 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 process.on("uncaughtException", (err) => {
   console.error("[Fatal] Uncaught Exception:", err);
-  // Optional: process.exit(1) if you want it to restart
 });
 
 const firebaseConfigPath = path.join(__dirname, "firebase-applet-config.json");
@@ -942,27 +946,26 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(__dirname, "dist");
+    console.log(`[Server] Production mode: Serving static files from ${distPath}`);
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
       app.get("*", (req, res) => {
         res.sendFile(path.join(distPath, "index.html"));
       });
+    } else {
+      console.warn(`[Server] dist directory not found at ${distPath}. Client side might not load.`);
     }
   }
 
-  // Ensure server listens except when specifically running as a serverless function export
-  const isServerless = !!process.env.VERCEL || !!process.env.LAMBDA_TASK_ROOT;
+  // Always listen on the hardcoded port 3000 as required by the platform
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Server] listening on 0.0.0.0:${PORT} (Node: ${process.version})`);
+  });
   
-  if (!isServerless) {
-    const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Server] listening on 0.0.0.0:${PORT} (Node: ${process.version})`);
-    });
-    
-    server.on("error", (err: any) => {
-      console.error("[Server] Critical error during listen:", err);
-    });
-  }
+  server.on("error", (err: any) => {
+    console.error("[Server] Critical error during listen:", err);
+  });
 }
 
 // Start the server
