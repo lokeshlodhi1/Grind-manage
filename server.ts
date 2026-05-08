@@ -51,6 +51,26 @@ if (dbId) {
 // Use the explicit app instance to avoid ambiguity
 const db = getFirestore(admin.apps[0]!, dbId);
 
+// Sequential ID Helper
+async function getNextId(counterKey: string, length: number): Promise<string> {
+  const counterRef = db.collection("counters").doc(counterKey);
+  try {
+    const result = await db.runTransaction(async (t) => {
+      const doc = await t.get(counterRef);
+      let nextVal = 1;
+      if (doc.exists) {
+        nextVal = (doc.data()?.value || 0) + 1;
+      }
+      t.set(counterRef, { value: nextVal });
+      return nextVal;
+    });
+    return result.toString().padStart(length, '0');
+  } catch (e) {
+    console.error(`[Counter] Failed to increment ${counterKey}:`, e);
+    throw e;
+  }
+}
+
 // Sync DB helper (Legacy replaced by Firestore)
 async function getSettings(): Promise<StoreSettings> {
   try {
@@ -88,9 +108,13 @@ async function logAction(action: string, module: string, data: any) {
   }
 }
 
+// Global app instance for export
+export const app = express();
+app.use(express.json());
+
 async function startServer() {
-  const app = express();
-  app.use(express.json());
+  // Use the existing app instance
+  // app.use(express.json()); // Already handled above
 
   // API Routes
   
@@ -226,9 +250,10 @@ async function startServer() {
         return res.status(400).json({ error: "Service name already exists" });
       }
 
+      const id = await getNextId("services", 8);
       const service = { ...req.body, createdAt: new Date().toISOString() };
-      const docRef = await db.collection("services").add(service);
-      const finalService = { id: docRef.id, ...service };
+      await db.collection("services").doc(id).set(service);
+      const finalService = { id, ...service };
       logAction("Created Service", "Inventory", finalService);
       res.json(finalService);
     } catch (e) { next(e); }
@@ -290,14 +315,15 @@ async function startServer() {
   app.post("/api/customers", async (req, res, next) => {
     try {
       const settings = await getSettings();
+      const id = await getNextId("customers", 5);
       const customer = { 
         ...req.body, 
         interestRate: req.body.interestRate || settings.defaultInterestRate,
         createdAt: new Date().toISOString(),
         status: 'ACTIVE'
       };
-      const docRef = await db.collection("customers").add(customer);
-      const finalCustomer = { id: docRef.id, ...customer };
+      await db.collection("customers").doc(id).set(customer);
+      const finalCustomer = { id, ...customer };
       logAction("Created Customer", "Customers", finalCustomer);
 
       syncToSheet('Customers', {
@@ -406,6 +432,7 @@ async function startServer() {
       const totalQuantity = items.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
       const unit = items.length > 0 ? items[0].pricingType : 'FIXED';
       
+      const orderId = await getNextId("orders", 8);
       const newOrderData = { 
         ...order, 
         date: new Date().toISOString(),
@@ -417,8 +444,7 @@ async function startServer() {
         status: 'PENDING_DELIVERY'
       };
       
-      const orderRef = await db.collection("orders").add(newOrderData);
-      const orderId = orderRef.id;
+      await db.collection("orders").doc(orderId).set(newOrderData);
 
       const batch = db.batch();
       items.forEach((item: any) => {
@@ -455,7 +481,8 @@ async function startServer() {
         updates.deliveryDate = new Date().toISOString();
         await orderRef.update(updates);
 
-        await db.collection("ledger").add({
+        const lid = await getNextId("ledger", 8);
+        await db.collection("ledger").doc(lid).set({
           customerId: order.customerId,
           orderId: req.params.id,
           debit: 0,
@@ -491,7 +518,8 @@ async function startServer() {
         const cashPaid = Number(partialCashAmount) || 0;
         
         if (paymentType === 'CASH') {
-          await db.collection("ledger").add({
+          const lid = await getNextId("ledger", 8);
+          await db.collection("ledger").doc(lid).set({
             customerId: order.customerId,
             orderId: req.params.id,
             debit: order.totalAmount,
@@ -506,7 +534,8 @@ async function startServer() {
           const creditBalance = Number((order.totalAmount - cashPaid).toFixed(2));
 
           if (cashPaid > 0) {
-            await db.collection("ledger").add({
+            const lid1 = await getNextId("ledger", 8);
+            await db.collection("ledger").doc(lid1).set({
               customerId: order.customerId,
               orderId: req.params.id,
               debit: cashPaid,
@@ -527,7 +556,8 @@ async function startServer() {
             const ledgerEntries = lEntriesSnap.docs.map(d => d.data()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             const currentBalance = ledgerEntries.length > 0 ? ledgerEntries[ledgerEntries.length - 1].balance : 0;
             
-            await db.collection("ledger").add({
+            const lid2 = await getNextId("ledger", 8);
+            await db.collection("ledger").doc(lid2).set({
               customerId: order.customerId,
               orderId: req.params.id,
               debit: creditBalance,
@@ -575,6 +605,7 @@ async function startServer() {
       const entries = lSnap.docs.map(d => d.data()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const currentBalance = entries.length > 0 ? entries[entries.length - 1].balance : 0;
 
+      const id = await getNextId("ledger", 8);
       const ledgerEntry = {
         customerId,
         debit: 0,
@@ -585,9 +616,9 @@ async function startServer() {
         notes: notes || "Payment received"
       };
 
-      const docRef = await db.collection("ledger").add(ledgerEntry);
+      await db.collection("ledger").doc(id).set(ledgerEntry);
       logAction("Payment Received", "Ledger", { customerId, amount });
-      res.json({ id: docRef.id, ...ledgerEntry });
+      res.json({ id, ...ledgerEntry });
     } catch (e) { next(e); }
   });
 
@@ -622,7 +653,8 @@ async function startServer() {
         const interest = lastEntry.balance * dailyRate;
         
         if (interest > 0.01) {
-          await db.collection("ledger").add({
+          const id = await getNextId("ledger", 8);
+          await db.collection("ledger").doc(id).set({
             customerId: customer.id,
             debit: 0,
             credit: 0,
@@ -734,7 +766,7 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && process.env.VITE_DEV_SERVER === "true") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -742,16 +774,26 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Only listen if not running as a module (Vercel)
+  if (process.env.VITE_DEV_SERVER === "true") {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+// Start if not in a Vercel-like environment that expects an export
+if (process.env.VITE_DEV_SERVER === "true" || !process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
 ;
