@@ -19,7 +19,7 @@ import {
   AreaChart,
   Area 
 } from 'recharts';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, apiFetch } from '../lib/utils';
 import { motion } from 'framer-motion';
 
 const data = [
@@ -41,7 +41,7 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    fetch('/api/stats')
+    apiFetch('/api/stats')
       .then(res => res.ok ? res.json() : null)
       .then(data => data && setStats(data))
       .catch(err => console.error("Stats Fetch Error:", err));
@@ -97,7 +97,7 @@ export default function Dashboard() {
           </p>
         </div>
         <button 
-          onClick={() => fetch('/api/ledger/calculate-interest', { method: 'POST' })}
+          onClick={() => apiFetch('/api/ledger/calculate-interest', { method: 'POST' })}
           className="theme-button-primary"
         >
           <Clock size={18} />

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { ChefHat, Lock, User, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { apiFetch } from '../lib/utils';
 
 interface LoginProps {
-  onLogin: (username: string) => void;
+  onLogin: (user: any) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -18,7 +19,7 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -26,7 +27,7 @@ export default function Login({ onLogin }: LoginProps) {
 
       if (response.ok) {
         const user = await response.json();
-        onLogin(user.username);
+        onLogin(user);
       } else {
         let errorMessage = 'Invalid credentials';
         try {

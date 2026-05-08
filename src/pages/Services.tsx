@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, ChefHat, Trash2, Edit2, Zap } from 'lucide-react';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, apiFetch } from '../lib/utils';
 import { Service, PricingType } from '../types';
 import ConfirmDialog from '../components/ConfirmDialog';
 
@@ -14,7 +14,7 @@ export default function Services() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/services').then(res => res.ok ? res.json() : []).then(setServices);
+    apiFetch('/api/services').then(res => res.ok ? res.json() : []).then(setServices);
   }, []);
 
   const openModal = (service?: Service) => {
@@ -36,7 +36,7 @@ export default function Services() {
     const method = editingService ? 'PUT' : 'POST';
     const url = editingService ? `/api/services/${editingService.id}` : '/api/services';
 
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -63,7 +63,7 @@ export default function Services() {
     setIsDeleting(true);
     
     try {
-      const res = await fetch(`/api/services/${serviceToDelete.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/services/${serviceToDelete.id}`, { method: 'DELETE' });
       if (res.ok) {
         setServices(prev => prev.filter(s => s.id !== serviceToDelete.id));
         setServiceToDelete(null);

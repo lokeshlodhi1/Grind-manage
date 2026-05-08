@@ -14,9 +14,10 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import { cn } from './lib/utils';
+import { cn, apiFetch } from './lib/utils';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
+import Orders from './pages/Orders';
 import Customers from './pages/Customers';
 import Services from './pages/Services';
 import Ledger from './pages/Ledger';
@@ -34,6 +35,15 @@ function AppContent() {
   });
   const [currentUser, setCurrentUser] = useState(() => {
     return localStorage.getItem('username') || '';
+  });
+  const [userRole, setUserRole] = useState(() => {
+    return localStorage.getItem('userRole') || 'USER';
+  });
+  const [userId, setUserId] = useState(() => {
+    return localStorage.getItem('userId') || '';
+  });
+  const [userFullName, setUserFullName] = useState(() => {
+    return localStorage.getItem('userFullName') || '';
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [storeName, setStoreName] = useState('Main Street Grinders');
@@ -57,19 +67,21 @@ function AppContent() {
   }, [darkMode]);
 
   useEffect(() => {
-    fetch('/api/settings')
+    apiFetch('/api/settings')
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
           if (data.storeName) setStoreName(data.storeName);
-          if (data.adminName) setAdminName(data.adminName);
+          if (data.adminName && userRole === 'ADMIN') setAdminName(data.adminName);
+          else if (userFullName) setAdminName(userFullName);
         }
       });
-  }, [location.pathname]); // Re-fetch on navigation loosely ensures updates if changed in settings
+  }, [location.pathname, userRole, userFullName]); // Re-fetch on navigation loosely ensures updates if changed in settings
 
   const navItems = [
     { id: 'dashboard', path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pos', path: '/pos', label: 'Order / POS', icon: ShoppingCart },
+    { id: 'orders', path: '/orders', label: 'All Orders', icon: History },
     { id: 'customers', path: '/customers', label: 'Customers', icon: Users },
     { id: 'services', path: '/services', label: 'Services', icon: ChefHat },
     { id: 'ledger', path: '/ledger', label: 'Ledger', icon: BookOpen },
@@ -77,11 +89,19 @@ function AppContent() {
     { id: 'settings', path: '/settings', label: 'Settings', icon: SettingsIcon },
   ];
 
-  const handleLogin = (username: string) => {
+  const handleLogin = (user: any) => {
     setIsAuthenticated(true);
-    setCurrentUser(username);
+    setCurrentUser(user.username);
+    setUserRole(user.role);
+    setUserId(user.id);
+    setUserFullName(user.name || user.username);
+    setAdminName(user.name || user.username);
+    
     localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('username', username);
+    localStorage.setItem('username', user.username);
+    localStorage.setItem('userRole', user.role);
+    localStorage.setItem('userId', user.id);
+    localStorage.setItem('userFullName', user.name || user.username);
     navigate('/');
   };
 
@@ -89,6 +109,9 @@ function AppContent() {
     setIsAuthenticated(false);
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('username');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userFullName');
     navigate('/login');
   };
 
@@ -212,7 +235,7 @@ function AppContent() {
                     {adminName.split(' ').map(n => n[0]).join('').slice(0, 2)}
                  </div>
                  <div className="hidden md:block">
-                    <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{adminName}</p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{adminName} <span className="ml-1 text-[8px] px-1 bg-primary/20 text-primary rounded font-black uppercase tracking-tighter">{userRole}</span></p>
                     <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors">Logout Account</p>
                  </div>
               </div>
@@ -224,6 +247,7 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/pos" element={<POS />} />
+              <Route path="/orders" element={<Orders />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/services" element={<Services />} />
               <Route path="/ledger" element={<Ledger />} />
@@ -231,7 +255,7 @@ function AppContent() {
               <Route path="/logs" element={<AuditLogs />} />
               <Route path="/order/:id" element={<OrderDetails />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/login" element={<Login onLogin={handleLogin} />} />
+              <Route path="/login" element={<Login onLogin={(user: any) => handleLogin(user)} />} />
             </Routes>
           </div>
         </section>

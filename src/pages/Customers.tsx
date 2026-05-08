@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, User, Mail, Phone, Calendar, Trash2, Edit2, MapPin, Filter, Wallet } from 'lucide-react';
-import { formatDate, cn, formatCurrency } from '../lib/utils';
+import { formatDate, cn, formatCurrency, apiFetch } from '../lib/utils';
 import { Customer } from '../types';
 import { useNavigate } from 'react-router-dom';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -26,7 +26,7 @@ export default function Customers() {
   });
 
   useEffect(() => {
-    fetch('/api/customers').then(res => res.ok ? res.json() : []).then(setCustomers);
+    apiFetch('/api/customers').then(res => res.ok ? res.json() : []).then(setCustomers);
   }, []);
 
   const openModal = (customer?: Customer) => {
@@ -52,7 +52,7 @@ export default function Customers() {
     const url = editingCustomer ? `/api/customers/${editingCustomer.id}` : '/api/customers';
     const method = editingCustomer ? 'PUT' : 'POST';
     
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -73,7 +73,7 @@ export default function Customers() {
     if (!customerToDelete) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/customers/${customerToDelete.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/customers/${customerToDelete.id}`, { method: 'DELETE' });
       if (res.ok) {
         setCustomers(customers.filter(c => c.id !== customerToDelete.id));
         setCustomerToDelete(null);

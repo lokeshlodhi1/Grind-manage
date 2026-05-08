@@ -1,4 +1,5 @@
 import express from "express";
+import "dotenv/config";
 import path from "path";
 import fs from "fs";
 import cron from "node-cron";
@@ -35,12 +36,14 @@ const PORT = 3000;
 
 // Initialize Firebase Admin
 let db: any;
+let projectId: string;
+let databaseId: string;
 
 function initializeFirebase() {
   if (admin.apps.length > 0) {
     console.log("[Firebase] Admin already initialized");
     try {
-      const dbId = firebaseConfig.firestoreDatabaseId;
+      const dbId = databaseId || firebaseConfig.firestoreDatabaseId;
       db = getFirestore(admin.apps[0]!, dbId);
       return;
     } catch (e: any) {
@@ -48,7 +51,8 @@ function initializeFirebase() {
     }
   }
 
-  let projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+  projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+  databaseId = process.env.FIREBASE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
   let clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
@@ -66,6 +70,7 @@ function initializeFirebase() {
     try {
       const config = JSON.parse(process.env.FIREBASE_CONFIG);
       projectId = projectId || config.projectId || config.project_id;
+      databaseId = databaseId || config.databaseId || config.database_id || config.firestoreDatabaseId;
       clientEmail = clientEmail || config.clientEmail || config.client_email;
       privateKey = privateKey || config.privateKey || config.private_key;
     } catch (e) {
@@ -78,9 +83,15 @@ function initializeFirebase() {
       console.log("[Firebase] Initializing with Service Account for project:", projectId);
       const formattedPrivateKey = privateKey
         .replace(/\\n/g, '\n')
+        .replace(/\n/g, '\n') // Ensure real newlines are kept
         .replace(/^"(.*)"$/, '$1')
         .replace(/^'(.*)'$/, '$1')
         .trim();
+      
+      // Basic validation of private key format
+      if (!formattedPrivateKey.includes("BEGIN PRIVATE KEY")) {
+        console.warn("[Firebase] Warning: Private key might be malformed (missing header)");
+      }
       
       admin.initializeApp({
         credential: admin.credential.cert({
@@ -98,7 +109,7 @@ function initializeFirebase() {
     }
 
     if (admin.apps.length > 0) {
-      const dbId = firebaseConfig.firestoreDatabaseId;
+      const dbId = databaseId;
       try {
         db = getFirestore(admin.apps[0]!, dbId);
         console.log("[Firebase] Firestore initialized successfully with ID:", dbId || "(default)");
@@ -113,7 +124,9 @@ function initializeFirebase() {
 }
 
 // Run initialization
-initializeFirebase();
+// Moved to bottom to ensure all functions are defined
+// initializeFirebase();
+// setupRoutes();
 
 // Sequential ID Helper
 async function getNextId(counterKey: string, length: number): Promise<string> {
@@ -172,9 +185,13 @@ async function logAction(action: string, module: string, data: any) {
   }
 }
 
-// Global app instance for export
 export const app = express();
 app.use(express.json());
+
+// Basic test route for Vercel
+app.get("/api/ping", (req, res) => {
+  res.json({ pong: true, time: new Date().toISOString(), vercel: !!process.env.VERCEL });
+});
 
 // Setup Routes
 function setupRoutes() {
@@ -188,13 +205,13 @@ function setupRoutes() {
     next();
   });
 
-  // Health Check
+// Health Check
   app.get("/api/health", async (req, res) => {
     try {
       const dbStatus = db ? "Initialized" : "NOT Initialized";
       let settingsFound = false;
       let dbError = null;
-      let collections = [];
+      let usersCount = -1;
 
       if (db) {
         try {
@@ -202,25 +219,7 @@ function setupRoutes() {
           settingsFound = snap.exists;
           
           const usersSnap = await db.collection("users").limit(1).get();
-          const usersCount = usersSnap.size;
-          res.json({ 
-            status: "ok",
-            database_status: dbStatus,
-            database_id: firebaseConfig.firestoreDatabaseId || "(default)",
-            project_id: admin.apps.length > 0 ? admin.apps[0]?.options.projectId : null,
-            settings_found: settingsFound,
-            users_check: usersCount >= 0 ? "Success" : "Empty",
-            env: {
-              vercel: !!process.env.VERCEL,
-              node_env: process.env.NODE_ENV,
-              has_config: !!process.env.FIREBASE_CONFIG,
-              has_project_id: !!process.env.FIREBASE_PROJECT_ID,
-              has_client_email: !!process.env.FIREBASE_CLIENT_EMAIL,
-              has_private_key: !!process.env.FIREBASE_PRIVATE_KEY
-            },
-            timestamp: new Date().toISOString()
-          });
-          return;
+          usersCount = usersSnap.size;
         } catch (e: any) {
           dbError = e.message;
         }
@@ -230,16 +229,18 @@ function setupRoutes() {
         status: dbStatus === "Initialized" && !dbError ? "ok" : "degraded",
         database_status: dbStatus,
         database_error: dbError,
-        database_id: firebaseConfig.firestoreDatabaseId || "(default)",
+        database_id: databaseId || "(default)",
         project_id: admin.apps.length > 0 ? admin.apps[0]?.options.projectId : null,
         settings_found: settingsFound,
+        users_check: usersCount >= 0 ? "Success" : "Error/Empty",
         env: {
           vercel: !!process.env.VERCEL,
           node_env: process.env.NODE_ENV,
           has_config: !!process.env.FIREBASE_CONFIG,
           has_project_id: !!process.env.FIREBASE_PROJECT_ID,
           has_client_email: !!process.env.FIREBASE_CLIENT_EMAIL,
-          has_private_key: !!process.env.FIREBASE_PRIVATE_KEY
+          has_private_key: !!process.env.FIREBASE_PRIVATE_KEY,
+          has_database_id: !!process.env.FIREBASE_DATABASE_ID
         },
         timestamp: new Date().toISOString()
       });
@@ -253,18 +254,8 @@ function setupRoutes() {
     try {
       console.log("[Login] Request received at", new Date().toISOString());
       
-      // Ensure DB is initialized (useful if cold start skipped it or if it failed)
       if (!db) {
-        console.warn("[Login] DB not initialized at request time, attempting re-init...");
         initializeFirebase();
-      }
-
-      if (!db) {
-        console.error("[Login] DB still not initialized after retry");
-        return res.status(503).json({ 
-          error: "Database not initialized", 
-          details: "Server failed to connect to Firestore. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY." 
-        });
       }
 
       const { username, password } = req.body;
@@ -272,54 +263,50 @@ function setupRoutes() {
         return res.status(400).json({ error: "Username and password are required" });
       }
 
-      console.log(`[Login] Attempt for username: ${username}`);
+      let snap = await db.collection("users")
+        .where("username", "==", username)
+        .where("password", "==", password)
+        .limit(1)
+        .get();
 
-      let snap;
-      try {
-        snap = await db.collection("users")
-          .where("username", "==", username)
-          .where("password", "==", password)
-          .limit(1)
-          .get();
-      } catch (dbError: any) {
-        console.error("[Login] Firestore Query Failed:", dbError);
-        const isPermissionDenied = dbError.code === 7 || dbError.message?.toLowerCase().includes("permission denied");
-        return res.status(500).json({ 
-          error: "Database query failed", 
-          details: isPermissionDenied ? "PERMISSION_DENIED: The service account does not have access to this Firestore project or database." : dbError.message,
-          code: dbError.code,
-          stack: process.env.NODE_ENV === "production" ? undefined : dbError.stack
-        });
+      // Fallback for bootstrap admin if it's the first time
+      if (snap.empty && username === "admin" && password === "admin") {
+         const adminCheck = await db.collection("users").where("username", "==", "admin").limit(1).get();
+         if (adminCheck.empty) {
+           const newUser = { 
+             username: "admin", 
+             password: "admin", 
+             role: "ADMIN", 
+             status: "ACTIVE",
+             name: "Administrator",
+             createdAt: new Date().toISOString() 
+           };
+           const docRef = await db.collection("users").add(newUser);
+           return res.json({ id: docRef.id, ...newUser });
+         } else {
+           // Admin exists but maybe password/status mismatch?
+           // If they used admin/admin, we should ensure it's active
+           const adminDoc = adminCheck.docs[0];
+           await adminDoc.ref.update({ status: "ACTIVE", password: "admin" });
+           const updatedAdmin = (await adminDoc.ref.get()).data();
+           return res.json({ id: adminDoc.id, ...updatedAdmin });
+         }
       }
       
       if (!snap.empty) {
         const userDoc = snap.docs[0];
         const user = userDoc.data();
-        console.log(`[Login] Success for user: ${username}`);
-        res.json({ id: userDoc.id, username: user.username, role: user.role });
-      } else {
-        // Bootstrap default admin if it doesn't exist and credentials match
-        if (username === "admin" && password === "admin") {
-          try {
-            const adminCheck = await db.collection("users").where("username", "==", "admin").limit(1).get();
-            if (adminCheck.empty) {
-              console.log(`[Login] Bootstrapping default admin user`);
-              const newUser = { username: "admin", password: "admin", role: "ADMIN", createdAt: new Date().toISOString() };
-              const docRef = await db.collection("users").add(newUser);
-              return res.json({ id: docRef.id, username: newUser.username, role: newUser.role });
-            }
-          } catch (bootstrapErr: any) {
-            console.error("[Login] Admin bootstrap failed:", bootstrapErr.message);
-            // Don't fail the whole request, proceed to 401
-          }
+        
+        // If status is not explicitly INACTIVE, allow login
+        if (user.status === "INACTIVE") {
+          return res.status(401).json({ error: "Account is inactive. Please contact administrator." });
         }
-        console.warn(`[Login] Failed for user: ${username}`);
+        
+        res.json({ id: userDoc.id, ...user });
+      } else {
         res.status(401).json({ error: "Invalid credentials" });
       }
-    } catch (e) { 
-      console.error("[Login] Error:", e);
-      next(e); 
-    }
+    } catch (e) { next(e); }
   });
 
   app.get("/api/users", async (req, res, next) => {
@@ -331,9 +318,46 @@ function setupRoutes() {
 
   app.post("/api/users", async (req, res, next) => {
     try {
-      const newUser = { ...req.body, createdAt: new Date().toISOString() };
+      const { username, mobile, role, name } = req.body;
+      if (!username || !mobile || !role || !name) {
+        return res.status(400).json({ error: "Name, Username, Mobile, and Role are mandatory" });
+      }
+
+      // Check unique mobile
+      const mobileSnap = await db.collection("users").where("mobile", "==", mobile).get();
+      if (!mobileSnap.empty) {
+        return res.status(400).json({ error: "Phone number already registered with another user" });
+      }
+
+      const usernameSnap = await db.collection("users").where("username", "==", username).get();
+      if (!usernameSnap.empty) {
+        return res.status(400).json({ error: "Username already taken" });
+      }
+
+      const newUser = { 
+        ...req.body, 
+        status: req.body.status || 'ACTIVE',
+        createdAt: new Date().toISOString() 
+      };
       const docRef = await db.collection("users").add(newUser);
       res.json({ id: docRef.id, ...newUser });
+    } catch (e) { next(e); }
+  });
+
+  app.put("/api/users/:id", async (req, res, next) => {
+    try {
+      const { mobile } = req.body;
+      if (mobile) {
+        const mobileSnap = await db.collection("users").where("mobile", "==", mobile).get();
+        const otherUser = mobileSnap.docs.find(d => d.id !== req.params.id);
+        if (otherUser) {
+          return res.status(400).json({ error: "Phone number already in use" });
+        }
+      }
+
+      await db.collection("users").doc(req.params.id).update(req.body);
+      const snap = await db.collection("users").doc(req.params.id).get();
+      res.json({ id: snap.id, ...snap.data() });
     } catch (e) { next(e); }
   });
 
@@ -448,14 +472,22 @@ function setupRoutes() {
   // Customers
   app.get("/api/customers", async (req, res, next) => {
     try {
-      const customersSnap = await db.collection("customers").get();
+      const userId = req.headers['x-user-id'] as string;
+      const userRole = req.headers['x-user-role'] as string;
+
+      let query: any = db.collection("customers");
+      if (userRole === 'USER' && userId) {
+        query = query.where("createdByUserId", "==", userId);
+      }
+
+      const customersSnap = await query.get();
       const ledgerSnap = await db.collection("ledger").where("type", "!=", "CASH").get();
       
-      const customersWithBalances = customersSnap.docs.map(doc => {
+      const customersWithBalances = customersSnap.docs.map((doc: any) => {
         const c = doc.data() as Customer;
         const entries = ledgerSnap.docs
-          .filter(l => l.data().customerId === doc.id)
-          .map(l => l.data())
+          .filter((l: any) => l.data().customerId === doc.id)
+          .map((l: any) => l.data())
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         
         const balance = entries.length > 0 ? entries[entries.length - 1].balance : 0;
@@ -467,13 +499,23 @@ function setupRoutes() {
 
   app.post("/api/customers", async (req, res, next) => {
     try {
+      const { mobile } = req.body;
+      if (mobile) {
+        const mobileSnap = await db.collection("customers").where("mobile", "==", mobile).get();
+        if (!mobileSnap.empty) {
+          return res.status(400).json({ error: "Customer with this mobile number already exists" });
+        }
+      }
+
+      const userId = req.headers['x-user-id'] as string;
       const settings = await getSettings();
       const id = await getNextId("customers", 5);
       const customer = { 
         ...req.body, 
         interestRate: req.body.interestRate || settings.defaultInterestRate,
         createdAt: new Date().toISOString(),
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        createdByUserId: userId || null
       };
       await db.collection("customers").doc(id).set(customer);
       const finalCustomer = { id, ...customer };
@@ -523,7 +565,15 @@ function setupRoutes() {
   // Orders
   app.get("/api/orders", async (req, res, next) => {
     try {
-      const ordersSnap = await db.collection("orders").get();
+      const userId = req.headers['x-user-id'] as string;
+      const userRole = req.headers['x-user-role'] as string;
+
+      let query: any = db.collection("orders");
+      if (userRole === 'USER' && userId) {
+        query = query.where("createdByUserId", "==", userId);
+      }
+
+      const ordersSnap = await query.get();
       const itemsSnap = await db.collection("orderItems").get();
       
       res.json(ordersSnap.docs.map(doc => {
@@ -581,6 +631,7 @@ function setupRoutes() {
 
   app.post("/api/orders", async (req, res, next) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
       const { order, items } = req.body;
       const totalQuantity = items.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
       const unit = items.length > 0 ? items[0].pricingType : 'FIXED';
@@ -594,7 +645,8 @@ function setupRoutes() {
         taxAmount: order.taxAmount || 0,
         unit,
         paymentType: 'UNSET',
-        status: 'PENDING_DELIVERY'
+        status: 'PENDING_DELIVERY',
+        createdByUserId: userId || null
       };
       
       await db.collection("orders").doc(orderId).set(newOrderData);
@@ -969,8 +1021,6 @@ async function run() {
   console.log("[Process] Current Working Directory:", process.cwd());
   
   try {
-    initializeFirebase();
-    setupRoutes();
     await startServer();
   } catch (err) {
     console.error("[Fatal] startup failed:", err);
@@ -978,7 +1028,14 @@ async function run() {
   }
 }
 
-run();
+// Initialize and Setup
+initializeFirebase();
+setupRoutes();
+
+// Start the server only if NOT running as a serverless function on Vercel
+if (!process.env.VERCEL) {
+  run();
+}
 
 export default app;
 ;

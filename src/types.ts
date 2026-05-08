@@ -18,6 +18,7 @@ export interface Customer {
   createdAt: string;
   status: 'ACTIVE' | 'INACTIVE';
   balance?: number;
+  createdByUserId?: string;
 }
 
 export interface Service {
@@ -95,4 +96,8 @@ export interface User {
   username: string;
   password?: string;
   role: 'ADMIN' | 'USER';
+  name?: string;
+  mobile?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
 }

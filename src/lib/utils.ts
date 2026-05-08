@@ -26,3 +26,14 @@ export function formatDate(dateString: any) {
     return 'Invalid Date';
   }
 }
+
+export async function apiFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const userId = localStorage.getItem('userId') || '';
+  const userRole = localStorage.getItem('userRole') || '';
+  
+  const headers = new Headers(init?.headers);
+  if (userId) headers.set('x-user-id', userId);
+  if (userRole) headers.set('x-user-role', userRole);
+
+  return fetch(input, { ...init, headers });
+}

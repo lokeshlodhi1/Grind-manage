@@ -14,7 +14,7 @@ import {
   FileText,
   X
 } from 'lucide-react';
-import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { formatCurrency, formatDate, cn, apiFetch } from '../lib/utils';
 import { Customer, LedgerEntry, Order } from '../types';
 
 export default function Ledger() {
@@ -32,7 +32,7 @@ export default function Ledger() {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    fetch('/api/customers').then(res => res.ok ? res.json() : []).then(data => {
+    apiFetch('/api/customers').then(res => res.ok ? res.json() : []).then(data => {
       setCustomers(data);
       if (customerId) {
         const cust = data.find((c: Customer) => c.id === customerId);
@@ -46,7 +46,7 @@ export default function Ledger() {
     let url = `/api/ledger/${cust.id}`;
     if (mode === 'CASH') url = `/api/ledger/${cust.id}/cash`;
     
-    fetch(url).then(res => res.ok ? res.json() : []).then(entries => {
+    apiFetch(url).then(res => res.ok ? res.json() : []).then(entries => {
       if (mode === 'CREDIT') {
         setLedger(entries.filter((e: any) => e.type !== 'CASH'));
       } else {
@@ -61,7 +61,7 @@ export default function Ledger() {
   };
 
   const viewOrder = async (orderId: string) => {
-    const res = await fetch(`/api/orders/${orderId}`);
+    const res = await apiFetch(`/api/orders/${orderId}`);
     if (res.ok) {
       setViewingOrder(await res.json());
     }
@@ -69,7 +69,7 @@ export default function Ledger() {
 
   const submitPayment = async () => {
     if (!selectedCust || !paymentAmount) return;
-    const res = await fetch('/api/ledger/payment', {
+    const res = await apiFetch('/api/ledger/payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

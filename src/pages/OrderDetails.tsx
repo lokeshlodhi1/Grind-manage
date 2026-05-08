@@ -20,7 +20,7 @@ import {
   MapPin,
   Zap
 } from 'lucide-react';
-import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { formatCurrency, formatDate, cn, apiFetch } from '../lib/utils';
 import { Order } from '../types';
 
 export default function OrderDetails() {
@@ -30,7 +30,7 @@ export default function OrderDetails() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/orders/${id}`)
+    apiFetch(`/api/orders/${id}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         setOrder(data);

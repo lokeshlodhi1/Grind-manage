@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, Store, Percent, Globe, Bell, Receipt, Plus, Trash2, Download, FileSpreadsheet, X, User, Edit2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { StoreSettings, Tax } from '../types';
-import { cn } from '../lib/utils';
+import { cn, apiFetch } from '../lib/utils';
 
 export default function Settings() {
   const [settings, setSettings] = useState<StoreSettings | null>(null);
@@ -11,13 +11,24 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'taxes' | 'export' | 'integration' | 'users'>('general');
   const [isExporting, setIsExporting] = useState<string | null>(null);
+  
+  const [userRole, setUserRole] = useState(() => localStorage.getItem('userRole') || 'USER');
+  const [userFullName, setUserFullName] = useState(() => localStorage.getItem('userFullName') || '');
+  
   const [userModal, setUserModal] = useState({ open: false, user: null as any });
-  const [formData, setFormData] = useState({ username: '', password: '', role: 'USER' });
+  const [formData, setFormData] = useState({ 
+    username: '', 
+    password: '', 
+    role: 'USER',
+    name: '',
+    mobile: '',
+    status: 'ACTIVE'
+  });
 
   const exportToExcel = async (type: 'orders' | 'customers' | 'ledger') => {
     setIsExporting(type);
     try {
-      const res = await fetch(`/api/${type}`);
+      const res = await apiFetch(`/api/${type}`);
       if (!res.ok) throw new Error('Failed to fetch data');
       const data = await res.json();
 
@@ -38,15 +49,15 @@ export default function Settings() {
   const [editingTax, setEditingTax] = useState<Partial<Tax> | null>(null);
 
   useEffect(() => {
-    fetch('/api/settings').then(res => res.ok ? res.json() : null).then(data => data && setSettings(data));
-    fetch('/api/taxes').then(res => res.ok ? res.json() : []).then(setTaxes);
-    fetch('/api/users').then(res => res.ok ? res.json() : []).then(setUsers);
+    apiFetch('/api/settings').then(res => res.ok ? res.json() : null).then(data => data && setSettings(data));
+    apiFetch('/api/taxes').then(res => res.ok ? res.json() : []).then(setTaxes);
+    apiFetch('/api/users').then(res => res.ok ? res.json() : []).then(setUsers);
   }, []);
 
   const handleSave = async () => {
-    if (!settings) return;
+    if (!settings || userRole !== 'ADMIN') return;
     setIsSaving(true);
-    const res = await fetch('/api/settings', {
+    const res = await apiFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
@@ -57,17 +68,18 @@ export default function Settings() {
   };
 
   const openTaxModal = (tax?: Tax) => {
+    if (userRole !== 'ADMIN') return;
     setEditingTax(tax || { name: '', rate: 0, isEnabled: true });
     setIsTaxModalOpen(true);
   };
 
   const handleSaveTax = async () => {
-    if (!editingTax?.name) return;
+    if (!editingTax?.name || userRole !== 'ADMIN') return;
 
     const method = editingTax.id ? 'PUT' : 'POST';
     const url = editingTax.id ? `/api/taxes/${editingTax.id}` : '/api/taxes';
 
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editingTax)
@@ -86,8 +98,9 @@ export default function Settings() {
   };
 
   const deleteTax = async (id: string) => {
+    if (userRole !== 'ADMIN') return;
     if (!confirm('Are you sure you want to delete this tax rule?')) return;
-    const res = await fetch(`/api/taxes/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/taxes/${id}`, { method: 'DELETE' });
     if (res.ok) {
       setTaxes(taxes.filter(t => t.id !== id));
     }
@@ -95,10 +108,17 @@ export default function Settings() {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userRole !== 'ADMIN') return;
+    
+    if (!formData.name || !formData.mobile || !formData.role) {
+      alert("Name, Mobile and Role are mandatory");
+      return;
+    }
+
     const method = userModal.user ? 'PUT' : 'POST';
     const url = userModal.user ? `/api/users/${userModal.user.id}` : '/api/users';
     
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -112,11 +132,18 @@ export default function Settings() {
         setUsers([...users, u]);
       }
       setUserModal({ open: false, user: null });
-      setFormData({ username: '', password: '', role: 'USER' });
+    } else {
+      const err = await res.json();
+      alert(err.error || "Failed to save user");
     }
   };
 
    if (!settings) return null;
+
+  const tabs = (['general', 'taxes', 'users', 'integration', 'export'] as const).filter(tab => {
+    if (userRole !== 'ADMIN' && (tab === 'users' || tab === 'integration')) return false;
+    return true;
+  });
 
   return (
     <div className="max-w-4xl mx-auto space-y-12 bp-24">
@@ -130,7 +157,7 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
         <div className="md:col-span-1 space-y-2">
-           {(['general', 'taxes', 'users', 'integration', 'export'] as const).map((tab) => (
+           {tabs.map((tab) => (
              <button 
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -156,6 +183,7 @@ export default function Settings() {
                         type="text" 
                         className="theme-input w-full px-6 py-4"
                         value={settings.storeName}
+                        readOnly={userRole !== 'ADMIN'}
                         onChange={e => setSettings({...settings, storeName: e.target.value})}
                       />
                    </div>
@@ -164,7 +192,8 @@ export default function Settings() {
                       <input 
                         type="text" 
                         className="theme-input w-full px-6 py-4"
-                        value={settings.adminName || ''}
+                        value={userRole === 'ADMIN' ? (settings.adminName || '') : userFullName}
+                        readOnly={userRole !== 'ADMIN'}
                         onChange={e => setSettings({...settings, adminName: e.target.value})}
                       />
                    </div>
@@ -177,6 +206,7 @@ export default function Settings() {
                         type="number" 
                         className="theme-input w-full px-6 py-4 tabular-nums"
                         value={settings.defaultInterestRate}
+                        readOnly={userRole !== 'ADMIN'}
                         onChange={e => setSettings({...settings, defaultInterestRate: Number(e.target.value)})}
                       />
                    </div>
@@ -192,13 +222,15 @@ export default function Settings() {
                         {isSaving ? "Saving changes..." : "Settings Saved"}
                       </span>
                    </div>
-                   <button 
-                    onClick={handleSave}
-                    className="theme-button-primary"
-                   >
-                     <Save size={18} />
-                     Save Configuration
-                   </button>
+                   {userRole === 'ADMIN' && (
+                    <button 
+                      onClick={handleSave}
+                      className="theme-button-primary"
+                    >
+                      <Save size={18} />
+                      Save Configuration
+                    </button>
+                   )}
                 </div>
               </div>
             ) : activeTab === 'users' ? (
@@ -211,7 +243,7 @@ export default function Settings() {
                   <button 
                    onClick={() => {
                      setUserModal({ open: true, user: null });
-                     setFormData({ username: '', password: '', role: 'USER' });
+                     setFormData({ username: '', password: '', role: 'USER', name: '', mobile: '', status: 'ACTIVE' });
                    }}
                    className="w-12 h-12 bg-primary text-white rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 hover:bg-slate-900 dark:hover:bg-blue-600 transition-all"
                   >
@@ -227,20 +259,38 @@ export default function Settings() {
                               <User size={20} />
                            </div>
                            <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white">{u.username}</p>
-                              <span className={cn(
-                                "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md",
-                                u.role === 'ADMIN' ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                              )}>
-                                {u.role}
-                              </span>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white">{u.name || u.username}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className={cn(
+                                  "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md",
+                                  u.role === 'ADMIN' ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                )}>
+                                  {u.role}
+                                </span>
+                                <span className={cn(
+                                  "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border",
+                                  u.status === 'ACTIVE' ? "border-emerald-200 text-emerald-600 bg-emerald-50" : "border-rose-200 text-rose-600 bg-rose-50"
+                                )}>
+                                  {u.status || 'ACTIVE'}
+                                </span>
+                                {u.mobile && <span className="text-[10px] text-slate-400">{u.mobile}</span>}
+                              </div>
                            </div>
                         </div>
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                            <button 
+                            onClick={() => {
+                              setUserModal({ open: true, user: u });
+                              setFormData({ ...u, password: '' });
+                            }}
+                            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-lg transition-all"
+                           >
+                              <Edit2 size={16} />
+                           </button>
+                           <button 
                             onClick={async () => {
                               if(confirm('Are you sure you want to delete this user?')) {
-                                const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' });
+                                const res = await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
                                 if(res.ok) setUsers(users.filter(item => item.id !== u.id));
                               }
                             }}
@@ -488,6 +538,28 @@ export default function Settings() {
               </div>
 
               <form onSubmit={handleSaveUser} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="theme-input w-full px-5 py-3"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Mobile No.</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="theme-input w-full px-5 py-3"
+                      value={formData.mobile}
+                      onChange={e => setFormData({...formData, mobile: e.target.value})}
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Username</label>
                   <input 
@@ -510,16 +582,29 @@ export default function Settings() {
                     />
                   </div>
                 )}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Role</label>
-                  <select 
-                    className="theme-input w-full px-5 py-3"
-                    value={formData.role}
-                    onChange={e => setFormData({...formData, role: e.target.value})}
-                  >
-                    <option value="USER">User (Sales)</option>
-                    <option value="ADMIN">Administrator</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Role</label>
+                    <select 
+                      className="theme-input w-full px-5 py-3"
+                      value={formData.role}
+                      onChange={e => setFormData({...formData, role: e.target.value})}
+                    >
+                      <option value="USER">User (Sales)</option>
+                      <option value="ADMIN">Administrator</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Status</label>
+                    <select 
+                      className="theme-input w-full px-5 py-3"
+                      value={formData.status}
+                      onChange={e => setFormData({...formData, status: e.target.value})}
+                    >
+                      <option value="ACTIVE">Active</option>
+                      <option value="INACTIVE">Inactive</option>
+                    </select>
+                  </div>
                 </div>
                 <button type="submit" className="theme-button-primary w-full py-4 mt-4">
                   {userModal.user ? 'Update User' : 'Create Login'}

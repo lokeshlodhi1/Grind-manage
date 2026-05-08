@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { History, Search, Filter } from 'lucide-react';
-import { formatDate, cn } from '../lib/utils';
+import { formatDate, cn, apiFetch } from '../lib/utils';
 import { AuditLog } from '../types';
 
 export default function AuditLogs() {
@@ -8,7 +8,7 @@ export default function AuditLogs() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetch('/api/logs').then(res => res.ok ? res.json() : []).then(setLogs);
+    apiFetch('/api/logs').then(res => res.ok ? res.json() : []).then(setLogs);
   }, []);
 
   const filteredLogs = logs.filter(l => 

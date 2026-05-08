@@ -18,7 +18,7 @@ import {
   Search
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, apiFetch } from '../lib/utils';
 import { Customer, Service, OrderItem, Order, Tax } from '../types';
 import ConfirmDialog from '../components/ConfirmDialog';
 
@@ -68,10 +68,10 @@ export default function POS() {
   const fetchData = async () => {
     try {
       const [custRes, servRes, ordRes, taxRes] = await Promise.all([
-        fetch('/api/customers'),
-        fetch('/api/services'),
-        fetch('/api/orders'),
-        fetch('/api/taxes')
+        apiFetch('/api/customers'),
+        apiFetch('/api/services'),
+        apiFetch('/api/orders'),
+        apiFetch('/api/taxes')
       ]);
       
       if (custRes.ok) setCustomers(await custRes.json());
@@ -121,7 +121,7 @@ export default function POS() {
 
   const handleQuickAddCustomer = async () => {
     if (!quickCustomer.name.trim()) return;
-    const res = await fetch('/api/customers', {
+    const res = await apiFetch('/api/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -145,7 +145,7 @@ export default function POS() {
     }
     if (cart.length === 0) return;
 
-    const res = await fetch('/api/orders', {
+    const res = await apiFetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -189,7 +189,7 @@ export default function POS() {
     setIsConfirming(true);
 
     try {
-      const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
+      const res = await apiFetch(`/api/orders/${deliveryOrder.id}/deliver`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -217,7 +217,7 @@ export default function POS() {
     setIsConfirming(true);
 
     try {
-      const res = await fetch(`/api/orders/${deliveryOrder.id}/deliver`, {
+      const res = await apiFetch(`/api/orders/${deliveryOrder.id}/deliver`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -243,7 +243,7 @@ export default function POS() {
     setIsConfirming(true);
 
     try {
-      const res = await fetch(`/api/orders/${confirmState.order.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/orders/${confirmState.order.id}`, { method: 'DELETE' });
       if (res.ok) {
         setOrders(orders.filter(o => o.id !== confirmState.order?.id));
         setConfirmState(null);
@@ -299,7 +299,10 @@ export default function POS() {
                     {customerSearch && (
                       <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-slate-800 rounded-2xl shadow-xl z-50 overflow-hidden border border-slate-200 dark:border-slate-700 max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200 custom-scrollbar">
                         {customers
-                          .filter(c => (c.status === 'ACTIVE' || !c.status) && c.name.toLowerCase().includes(customerSearch.toLowerCase()))
+                          .filter(c => (c.status === 'ACTIVE' || !c.status) && (
+                            c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
+                            (c.mobile || '').includes(customerSearch)
+                          ))
                           .map(c => (
                             <button
                               key={c.id}
@@ -530,7 +533,7 @@ export default function POS() {
         <div className="overflow-x-auto flex-1 max-h-[600px] overflow-y-auto custom-scrollbar px-8">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800">
+              <tr className="border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
                 <th className="py-6 text-xs font-bold uppercase tracking-tight text-slate-400 dark:text-slate-500 pr-8">Order ID</th>
                 <th className="py-6 text-xs font-bold uppercase tracking-tight text-slate-400 dark:text-slate-500 pr-8">Customer</th>
                 <th className="py-6 text-xs font-bold uppercase tracking-tight text-slate-400 dark:text-slate-500 text-center">Status</th>
